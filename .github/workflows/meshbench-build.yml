@@ -91,10 +91,20 @@ jobs:
         run: |
           set -e
           TAG="meshbench-$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)"
+          cat > /tmp/notes.md <<'NOTES'
+          Stock Renode with one change: SEVONPEND generates an event for any
+          exception entering the pending state, not only for ones the CPU would
+          accept (DDI0403E B1.5.17).
+
+          Without it, firmware that sets SEVONPEND, sleeps on WFE and then reads
+          ISPR - handling the source in thread mode with the interrupt
+          deliberately left disabled - never wakes. MeshCore's published nRF52
+          builds do exactly that.
+
+          Changed in two submodules, both forks of upstream:
+          https://github.com/A13xB0/tlib/tree/sevonpend-any-pending
+          https://github.com/A13xB0/renode-infrastructure/tree/sevonpend-any-pending
+          NOTES
           gh release create "$TAG" dist/* \
             --title "Renode for MeshBench ($TAG)" \
-            --notes "Stock Renode with one change: SEVONPEND generates an event for any exception entering the pending state, not only for ones the CPU would accept (DDI0403E B1.5.17).
-
-Without it, firmware that sets SEVONPEND, sleeps on \`WFE\` and then reads ISPR - handling the source in thread mode with the interrupt deliberately left disabled - never wakes. MeshCore's published nRF52 builds do exactly that.
-
-Changes: [tlib](https://github.com/A13xB0/tlib/tree/sevonpend-any-pending), [renode-infrastructure](https://github.com/A13xB0/renode-infrastructure/tree/sevonpend-any-pending)."
+            --notes-file /tmp/notes.md
