@@ -44,9 +44,11 @@ jobs:
             python3 python3-pip dotnet-sdk-8.0
 
       - name: Build
-        # No -p: that packaging path wants fpm and produces a .deb, and what
-        # we want is a portable tree anyone can drop beside MeshBench.
-        run: ./build.sh --net
+        # -t is the portable package: it bundles the .NET runtime, so the
+        # result runs on a machine with no dotnet installed. That is the whole
+        # point - setting MeshBench up should not mean installing a runtime.
+        # (-p is the distribution package and wants fpm, which we do not need.)
+        run: ./build.sh --net -t
 
       - name: Confirm the fix is in the binary we built
         run: |
@@ -67,10 +69,14 @@ jobs:
         run: |
           set -e
           mkdir -p dist
-          # A portable tree, not a distribution package: MeshBench looks for the
-          # binary beside itself or in its tools directory, so a tarball someone
-          # unpacks is the whole install.
-          tar czf dist/renode-meshbench-linux-x86_64.tar.gz -C output/bin Release
+          find output packages -maxdepth 3 -name '*portable*.tar.gz' 2>/dev/null | head
+          for f in $(find output packages -maxdepth 3 -name '*portable*.tar.gz' 2>/dev/null); do
+            cp "$f" dist/
+          done
+          if [ -z "$(ls -A dist 2>/dev/null)" ]; then
+            echo "portable package not found; falling back to the built tree" >&2
+            tar czf dist/renode-meshbench-linux-x86_64.tar.gz -C output/bin Release
+          fi
           ls -la dist
 
       - uses: actions/upload-artifact@v4
