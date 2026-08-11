@@ -1,0 +1,100 @@
+name: build
+
+# A portable Renode with the SEVONPEND fix, built here so that packaging
+# MeshBench is a download rather than a toolchain.
+#
+# The fix lives in two submodules - tlib answers the architectural question and
+# the NVIC provides the answer - so this builds from source rather than patching
+# a release. Everything else is stock Renode.
+
+on:
+  push:
+    branches: [meshbench, main, master]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Publish a release from this build'
+        type: boolean
+        default: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Show what we are building
+        run: |
+          git log --oneline -1
+          git submodule status | sed 's/^/  /'
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          # Renode's own build prerequisites, plus gcc-multilib for the 32-bit
+          # CPU cores and policykit for the packaging step.
+          sudo apt-get install -y --no-install-recommends \
+            git cmake gcc g++ gcc-multilib g++-multilib \
+            python3 python3-pip policykit-1 libgtk2.0-dev uml-utilities \
+            gtk-sharp2 dotnet-sdk-8.0
+
+      - name: Build
+        run: ./build.sh --net -p
+
+      - name: Confirm the fix is in the binary we built
+        run: |
+          set -e
+          # Cheap and specific: the symbol only exists on the patched branch, so
+          # its absence means a submodule quietly resolved to upstream.
+          if ! grep -rq "tlib_nvic_get_pending_irq" src/Infrastructure/src/Emulator/Cores/tlib/arch/arm/arch_callbacks.h; then
+            echo "tlib is not the patched one" >&2
+            exit 1
+          fi
+          if ! grep -rq "AnyInterruptPending" src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs; then
+            echo "renode-infrastructure is not the patched one" >&2
+            exit 1
+          fi
+          echo "both halves of the SEVONPEND fix are present"
+
+      - name: Collect the portable package
+        id: pack
+        run: |
+          set -e
+          mkdir -p dist
+          # build.sh -p leaves a packaged output; take whatever it produced
+          # rather than guessing a name that changes between versions.
+          find output packages -maxdepth 3 \( -name '*.tar.gz' -o -name '*.deb' \) 2>/dev/null | head -20
+          for f in $(find output packages -maxdepth 3 \( -name '*.tar.gz' -o -name '*.deb' \) 2>/dev/null); do
+            cp "$f" dist/
+          done
+          # If packaging produced nothing, ship the built tree so the artefact is
+          # still usable - a failed package should not cost the whole build.
+          if [ -z "$(ls -A dist 2>/dev/null)" ]; then
+            tar czf dist/renode-meshbench-linux-x86_64.tar.gz \
+              -C output/bin/Release . || true
+          fi
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: renode-meshbench-linux
+          path: dist/*
+
+      - name: Release
+        if: github.event_name == 'workflow_dispatch' && inputs.release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG="meshbench-$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)"
+          gh release create "$TAG" dist/* \
+            --title "Renode for MeshBench ($TAG)" \
+            --notes "Stock Renode with one change: SEVONPEND generates an event for any exception entering the pending state, not only for ones the CPU would accept (DDI0403E B1.5.17).
+
+Without it, firmware that sets SEVONPEND, sleeps on \`WFE\` and then reads ISPR - handling the source in thread mode with the interrupt deliberately left disabled - never wakes. MeshCore's published nRF52 builds do exactly that.
+
+Changes: [tlib](https://github.com/A13xB0/tlib/tree/sevonpend-any-pending), [renode-infrastructure](https://github.com/A13xB0/renode-infrastructure/tree/sevonpend-any-pending)."
