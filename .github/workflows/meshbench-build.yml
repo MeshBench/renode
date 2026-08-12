@@ -102,8 +102,8 @@ jobs:
           builds do exactly that.
 
           Changed in two submodules, both forks of upstream:
-          https://github.com/A13xB0/tlib/tree/sevonpend-any-pending
-          https://github.com/A13xB0/renode-infrastructure/tree/sevonpend-any-pending
+          https://github.com/MeshBench/tlib/tree/sevonpend-any-pending
+          https://github.com/MeshBench/renode-infrastructure/tree/sevonpend-any-pending
           NOTES
           gh release create "$TAG" dist/* \
             --title "Renode for MeshBench ($TAG)" \
