@@ -7,10 +7,10 @@ name: build
 # the NVIC provides the answer - so this builds from source rather than patching
 # a release. Everything else is stock Renode.
 
+# Dispatch only. Every push used to rebuild all three platforms and publish
+# nothing, and with the macOS leg on the org's single Mac, each stray rebuild
+# parked a real one behind it in the queue.
 on:
-  push:
-    branches: [meshbench, main, master]
-    tags: ['v*']
   workflow_dispatch:
     inputs:
       release:
