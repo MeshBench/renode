@@ -164,6 +164,11 @@ jobs:
           install: >-
             git
             make
+            # mingw32-make, not MSYS make: cmake drives the build with the
+            # "MinGW Makefiles" generator, which looks for that name and
+            # stops with CMAKE_MAKE_PROGRAM unset when only MSYS make is
+            # installed.
+            mingw-w64-x86_64-make
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-python
