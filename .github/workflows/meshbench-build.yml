@@ -99,17 +99,128 @@ jobs:
           name: renode-meshbench-linux
           path: dist/*
 
-      - name: Release
-        if: github.event_name == 'workflow_dispatch' && inputs.release
+  macos:
+    # Free on a public repository, and macos-14 is Apple Silicon - which is
+    # the Mac anybody running MeshBench today actually has. build.sh detects
+    # the host and picks the osx-arm64 runtime itself.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive, fetch-depth: 0 }
+
+      - name: Dependencies
+        run: |
+          brew install --quiet cmake dotnet-sdk || brew install --quiet cmake
+          dotnet --version || true
+
+      - name: Build
+        run: ./build.sh --net -t
+
+      - name: Confirm the fix is in the binary we built
+        run: |
+          set -e
+          grep -rq "tlib_nvic_get_pending_irq" src/Infrastructure/src/Emulator/Cores/tlib/arch/arm/arch_callbacks.h
+          grep -rq "AnyInterruptPending" src/Infrastructure/src/Emulator/Cores/Arm-M/NVIC.cs
+          echo "both halves of the SEVONPEND fix are present"
+
+      - name: Collect the portable package
+        run: |
+          set -e
+          mkdir -p dist
+          for f in $(find output packages -maxdepth 3 -name '*portable*.tar.gz' 2>/dev/null); do
+            base=$(basename "$f")
+            case "$base" in
+              *meshbench*) cp "$f" "dist/$base" ;;
+              *) cp "$f" "dist/${base%.tar.gz}-meshbench.tar.gz" ;;
+            esac
+          done
+          if [ -z "$(ls -A dist 2>/dev/null)" ]; then
+            tar czf dist/renode-meshbench-macos-arm64.tar.gz -C output/bin Release
+          fi
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: renode-meshbench-macos
+          retention-days: 5
+          path: dist/*
+
+  windows:
+    # Renode has no Windows build entry point of its own - build.sh is the
+    # only one - so it runs under MSYS2, the same way the QEMU fork builds
+    # there. Free on a public repository.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive, fetch-depth: 0 }
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            make
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-python
+
+      - name: .NET
+        shell: pwsh
+        run: dotnet --list-sdks
+
+      - name: Build
+        run: ./build.sh --net -t || echo "::warning::Renode did not build on Windows; nRF52 boards stay unavailable there"
+
+      - name: Collect the portable package
+        run: |
+          mkdir -p dist
+          for f in $(find output packages -maxdepth 3 -name '*portable*' 2>/dev/null); do
+            base=$(basename "$f")
+            case "$base" in
+              *meshbench*) cp "$f" "dist/$base" ;;
+              *) cp "$f" "dist/meshbench-$base" ;;
+            esac
+          done
+          ls -la dist || true
+
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('dist/*') != ''
+        with:
+          name: renode-meshbench-windows
+          retention-days: 5
+          path: dist/*
+
+  release:
+    # always(), so the platforms that built are published even while another
+    # is still being taught to. A release with nothing in it is refused below.
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.release
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: all }
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
+          mkdir -p dist && find all -type f -exec cp {} dist/ \; || true
+          ls -la dist
+          if [ -z "$(ls -A dist 2>/dev/null)" ]; then
+            echo "::error::nothing built; not publishing an empty release"; exit 1
+          fi
           TAG="meshbench-$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)"
           cat > /tmp/notes.md <<'NOTES'
           Stock Renode with one change: SEVONPEND generates an event for any
           exception entering the pending state, not only for ones the CPU would
-          accept (DDI0403E B1.5.17).
+          accept (ARM DDI0403E B1.5.17).
 
           Without it, firmware that sets SEVONPEND, sleeps on WFE and then reads
           ISPR - handling the source in thread mode with the interrupt
@@ -119,6 +230,10 @@ jobs:
           Changed in two submodules, both forks of upstream:
           https://github.com/MeshBench/tlib/tree/sevonpend-any-pending
           https://github.com/MeshBench/renode-infrastructure/tree/sevonpend-any-pending
+
+          These are not upstream Renode releases. The files say meshbench for
+          that reason, and each is the portable package, which carries its own
+          .NET runtime.
           NOTES
           gh release create "$TAG" dist/* \
             --title "Renode for MeshBench ($TAG)" \
