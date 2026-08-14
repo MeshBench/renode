@@ -180,7 +180,16 @@ jobs:
         run: dotnet --list-sdks
 
       - name: Build
-        run: ./build.sh --net -t || echo "::warning::Renode did not build on Windows; nRF52 boards stay unavailable there"
+        # The MSYS2 shell does not inherit Windows' PATH, so the dotnet the
+        # runner image carries is invisible from here - the C cores built all
+        # the way and the .NET half then died on "dotnet: command not found".
+        # No fallback swallow any more either: the job went green while
+        # publishing nothing, twice, and a red job that names its line is
+        # cheaper than a green one that lies.
+        run: |
+          export PATH="$PATH:/c/Program Files/dotnet"
+          dotnet --version
+          ./build.sh --net -t
 
       - name: Collect the portable package
         run: |
