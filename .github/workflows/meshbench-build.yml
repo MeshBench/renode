@@ -193,8 +193,12 @@ jobs:
         # publishing nothing, twice, and a red job that names its line is
         # cheaper than a green one that lies.
         run: |
-          export PATH="$PATH:/c/Program Files/dotnet"
+          # MSYS2 sees none of the Windows tools the runner image carries, so
+          # each one the build reaches for is added by hand: dotnet for the
+          # .NET half, Inno Setup's iscc for the portable packaging.
+          export PATH="$PATH:/c/Program Files/dotnet:/c/Program Files (x86)/Inno Setup 6"
           dotnet --version
+          which iscc || echo "iscc still not visible"
           ./build.sh --net -t
 
       - name: Collect the portable package
