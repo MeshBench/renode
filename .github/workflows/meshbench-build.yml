@@ -100,10 +100,10 @@ jobs:
           path: dist/*
 
   macos:
-    # Free on a public repository, and macos-14 is Apple Silicon - which is
-    # the Mac anybody running MeshBench today actually has. build.sh detects
-    # the host and picks the osx-arm64 runtime itself.
-    runs-on: macos-14
+    # The org's own M4. Safe because this workflow triggers on push and
+    # dispatch only - both need write access - and build.sh detects the host
+    # and picks the osx-arm64 runtime itself.
+    runs-on: [self-hosted, macos-m4]
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive, fetch-depth: 0 }
