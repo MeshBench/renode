@@ -150,6 +150,12 @@ jobs:
     # only one - so it runs under MSYS2, the same way the QEMU fork builds
     # there. Free on a public repository.
     runs-on: windows-latest
+    env:
+      # Real symlinks, not the copies MSYS2 defaults to failing on: the
+      # portable packaging copies a tree that contains one, and the whole
+      # build - Renode.dll included - died at that cp. Same setting the QEMU
+      # fork has carried all along.
+      MSYS: winsymlinks:native
     defaults:
       run:
         shell: msys2 {0}
