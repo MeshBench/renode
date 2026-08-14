@@ -70,8 +70,17 @@ jobs:
           set -e
           mkdir -p dist
           find output packages -maxdepth 3 -name '*portable*.tar.gz' 2>/dev/null | head
+          # Renamed on the way in, so the mark travels with the file. These
+          # are not upstream Renode releases - they carry the SEVONPEND fix -
+          # and a copy found loose on a disk should say whose build it is.
+          # The name keeps "linux" and "portable" either side of the mark, so
+          # MeshBench's download pattern still matches it.
           for f in $(find output packages -maxdepth 3 -name '*portable*.tar.gz' 2>/dev/null); do
-            cp "$f" dist/
+            base=$(basename "$f")
+            case "$base" in
+              *meshbench*) cp "$f" "dist/$base" ;;
+              *) cp "$f" "dist/${base%.tar.gz}-meshbench.tar.gz" ;;
+            esac
           done
           if [ -z "$(ls -A dist 2>/dev/null)" ]; then
             echo "portable package not found; falling back to the built tree" >&2
