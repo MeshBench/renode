@@ -1,3 +1,30 @@
+# MeshBench fork of Renode
+
+A fork of [renode/renode](https://github.com/renode/renode), maintained for
+[MeshBench](https://github.com/MeshBench), an RF-accurate MeshCore network
+simulator. Upstream plus a patch, not a rewrite.
+
+**What it adds.** It ties together the two halves of a SEVONPEND fix, in
+[MeshBench/tlib](https://github.com/MeshBench/tlib) and
+[MeshBench/renode-infrastructure](https://github.com/MeshBench/renode-infrastructure),
+and builds a portable package in CI with the runtime included. It also asserts
+both halves of that fix are present in the tree it built.
+
+**Why.** MeshCore's published nRF52 builds sleep on `WFE` expecting SEVONPEND to
+generate an event for any exception entering the pending state. Without the fix
+an emulated board boots and then goes quiet.
+
+**Branches.** `meshbench-main` is the default, and the line releases are cut
+from. `meshbench` is the earlier name for the same work, kept so existing
+references still resolve. Upstream's branches are untouched.
+
+**Reporting.** Issues are tracked at
+[MeshBench/meshbench](https://github.com/MeshBench/meshbench/issues), not here.
+
+Upstream's README follows, with its licence and attribution intact.
+
+---
+
 # Renode
 
 Copyright (c) 2010-2026 [Antmicro](https://www.antmicro.com)
