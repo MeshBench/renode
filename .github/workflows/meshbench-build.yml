@@ -110,6 +110,22 @@ jobs:
 
       - name: Dependencies
         run: |
+          # A self-hosted runner's steps are not a login shell, so Homebrew's
+          # shellenv has never run and nothing it installed is on PATH. Found
+          # rather than assumed, because the Apple Silicon prefix and the Intel
+          # one differ, and written to GITHUB_PATH so the build step that needs
+          # dotnet sees it too.
+          for d in /opt/homebrew/bin /usr/local/bin; do
+            if [ -x "$d/brew" ]; then
+              echo "$d" >> "$GITHUB_PATH"
+              export PATH="$d:$PATH"
+              break
+            fi
+          done
+          if ! command -v brew >/dev/null; then
+            echo "::error::no Homebrew on this runner; cmake and dotnet cannot be installed"
+            exit 1
+          fi
           brew install --quiet cmake dotnet-sdk || brew install --quiet cmake
           dotnet --version || true
 
