@@ -237,14 +237,43 @@ jobs:
           path: dist/*
 
   release:
-    # always(), so the platforms that built are published even while another
-    # is still being taught to. A release with nothing in it is refused below.
+    # always() so this job still runs when a platform failed, because a run
+    # that publishes nothing should say which platform stopped it rather than
+    # be skipped in silence. What it will not do is publish a partial set: see
+    # the refusal below.
     if: always() && github.event_name == 'workflow_dispatch' && inputs.release
     needs: [linux, macos, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      # A release carries every platform or it is not cut.
+      #
+      # Publishing whatever happened to build looks generous and is not. The
+      # new release becomes the one consumers resolve, so two thirds of a set
+      # quietly replaces a complete one, and nothing downstream can tell a
+      # platform that was never built from a platform nobody wanted. That is
+      # how a sibling fork's release came to drop every platform but Linux
+      # while every pipeline stayed green. One broken runner is not a reason
+      # to ship an incomplete release; it is a reason to fix the runner.
+      - name: Every platform, or none
+        run: |
+          missing=
+          for p in linux macos windows; do
+            case "$p" in
+              linux)   r='${{ needs.linux.result }}' ;;
+              macos)   r='${{ needs.macos.result }}' ;;
+              windows) r='${{ needs.windows.result }}' ;;
+            esac
+            [ "$r" = success ] || missing="$missing $p($r)"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::not publishing, these platforms did not build:$missing." \
+                 "A release carries all three or it is not cut, because an" \
+                 "incomplete one silently replaces a complete one."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: all }
