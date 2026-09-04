@@ -140,19 +140,56 @@ jobs:
           echo "both halves of the SEVONPEND fix are present"
 
       - name: Collect the portable package
+        # macOS packages as a disk image, not a tarball. build.sh -t runs
+        # tools/packaging/make_osx_portable.sh, which assembles a portable
+        # Renode.app and wraps it with hdiutil - so this looked for
+        # '*portable*.tar.gz', copied from the Linux job beside it, matched
+        # nothing, and a fallback quietly tarred the raw build tree instead.
+        # That shipped for months behind a green tick, and MeshBench's runtime
+        # catalogue refused macOS Renode with "the fork publishes a build tree
+        # rather than a portable package" - a symptom of this one word.
+        #
+        # The app is unwrapped and tarred here rather than the .dmg being
+        # published, so what a consumer fetches has the same shape on all three
+        # platforms and nothing downstream needs hdiutil to open it.
         run: |
           set -e
           mkdir -p dist
-          for f in $(find output packages -maxdepth 3 -name '*portable*.tar.gz' 2>/dev/null); do
-            base=$(basename "$f")
-            case "$base" in
-              *meshbench*) cp "$f" "dist/$base" ;;
-              *) cp "$f" "dist/${base%.tar.gz}-meshbench.tar.gz" ;;
-            esac
-          done
-          if [ -z "$(ls -A dist 2>/dev/null)" ]; then
-            tar czf dist/renode-meshbench-macos-arm64.tar.gz -C output/bin Release
+          dmg=$(find output packages -maxdepth 3 -name '*portable*.dmg' 2>/dev/null | head -1)
+          if [ -z "$dmg" ]; then
+            # Loud. The whole reason this job shipped the wrong thing for so
+            # long is that its fallback was silent, and a packaging step that
+            # quietly substitutes something else is a bug whatever it is
+            # falling back from.
+            echo "::error::build.sh -t produced no portable disk image."\
+                 "Looked under output/ and packages/ for *portable*.dmg;"\
+                 "make_osx_portable.sh is what creates it. Not falling back to"\
+                 "the build tree: that is not a portable package and shipping"\
+                 "it as one is how this went unnoticed before."
+            find output packages -maxdepth 3 -type f 2>/dev/null | head -40
+            exit 1
           fi
+          echo "portable image: $dmg"
+
+          mnt=$(mktemp -d)
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt"
+          # Detached however this ends: a mounted image left behind wedges the
+          # next run on a self-hosted runner, which does not get a fresh disk.
+          trap 'hdiutil detach "$mnt" -quiet || true' EXIT
+
+          app=$(find "$mnt" -maxdepth 1 -name '*.app' | head -1)
+          [ -n "$app" ] || { echo "::error::no .app inside $dmg"; ls -la "$mnt"; exit 1; }
+          # -C the mount and name the app, so the tarball holds Renode.app at
+          # its root rather than a path off somebody's temporary directory.
+          tar czf "dist/renode-meshbench-macos-arm64-portable.tar.gz" \
+            -C "$(dirname "$app")" "$(basename "$app")"
+
+          # It has to carry a launcher. The build tree this used to ship did
+          # not, which is the other half of why nothing here had ever started
+          # macOS Renode.
+          tar tzf dist/renode-meshbench-macos-arm64-portable.tar.gz \
+            | grep -q 'Contents/MacOS/renode$' \
+            || { echo "::error::the packaged app has no Contents/MacOS/renode in it"; exit 1; }
           ls -la dist
 
       - uses: actions/upload-artifact@v4
